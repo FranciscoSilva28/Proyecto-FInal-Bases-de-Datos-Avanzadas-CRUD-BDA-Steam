@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Steam BDA - Plataforma de distribución de videojuegos">
+    <title>{% block title %}Steam BDA{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <nav class="navbar-custom">
+        <div class="main-container" style="display:flex; align-items:center; justify-content:space-between; padding-top:0; padding-bottom:0;">
+            <a href="/" class="navbar-brand" style="text-decoration:none;">🎮 Steam BDA</a>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                {% if session.usuario_id %}
+                    <span class="nav-link nav-user-badge">{{ session.username }}</span>
+                    
+                    {% if session.rol == 'ADMIN' %}
+                        <a class="nav-link" href="/catalogo">🛒 Catálogo Público</a>
+                        <a class="nav-link" href="/admin/juegos-pendientes">⚙️ Solicitudes</a>
+                        <a class="nav-link" href="/admin/actividad-usuarios">📊 Actividad</a>
+                        <a class="nav-link" href="/admin/auditoria">📋 Auditoría</a>
+                    {% elif session.rol == 'EMPRESA' %}
+                        <a class="nav-link" href="/catalogo">🛒 Catálogo Público</a>
+                        <a class="nav-link" href="/empresa/mis-juegos">📋 Mis Juegos</a>
+                        <a class="nav-link" href="/empresa/subir-juego">📤 Subir Juego</a>
+                    {% else %}
+                        <a class="nav-link" href="/catalogo">🛒 Catálogo</a>
+                        <a class="nav-link" href="/carrito/">🛍️ Carrito</a>
+                        <a class="nav-link" href="/carrito/biblioteca">📚 Biblioteca</a>
+                    {% endif %}
+                    
+                    <a class="nav-link nav-logout" href="/logout">Salir</a>
+                {% else %}
+                    <a class="nav-link" href="/login">Iniciar Sesión</a>
+                    <a class="nav-link btn-glow" href="/registro" style="padding:0.4rem 1rem; font-size:0.85rem;">Registrarse</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert-custom alert-{{ category }}" style="margin-bottom:1rem;">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+</body>
+</html>

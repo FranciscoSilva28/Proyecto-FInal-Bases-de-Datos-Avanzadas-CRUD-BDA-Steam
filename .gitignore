@@ -1,0 +1,25 @@
+# Entorno virtual de Python
+venv/
+.venv/
+env/
+
+# Cache de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de configuración locales y variables de entorno
+.env
+.env.*
+! .env.example
+
+# Archivos de uploads (imágenes/videos del servidor local)
+static/uploads/portadas/*
+static/uploads/trailers/*
+!static/uploads/portadas/.gitkeep
+!static/uploads/trailers/.gitkeep
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db

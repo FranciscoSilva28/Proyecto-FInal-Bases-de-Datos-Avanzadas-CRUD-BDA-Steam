@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Catálogo - Steam BDA{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>🎮 Catálogo de Juegos</h2>
+    <p>Explora y adquiere los mejores títulos disponibles.</p>
+</div>
+
+<div class="grid-catalog">
+    {% if juegos %}
+        {% for juego in juegos %}
+        <div class="card-game">
+            <div class="card-img-wrapper">
+                <img src="/imagen-juego/{{ juego[0] }}" alt="Portada de {{ juego[1] }}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="img-placeholder" style="display:none;">🎮</div>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">{{ juego[1] }}</h5>
+                
+                <!-- Metadatos de la nueva Vista Oracle -->
+                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; line-height: 1.4;">
+                    🏢 <strong>{{ juego[4] }}</strong><br>
+                    🏷️ {{ juego[8] if juego[8] else 'Sin género' }}
+                </div>
+                
+                <!-- Promedio y número de reseñas (Función + Particiones) -->
+                <div style="margin-bottom: 0.8rem; font-size: 0.95rem; color: #fbbf24; font-weight: 600;">
+                    ⭐ {{ juego[5] }} 
+                    <span style="color:var(--text-muted); font-size:0.75rem; font-weight: normal;">
+                        ({{ juego[6] }} reseñas)
+                    </span>
+                </div>
+
+                <span class="card-price">${{ "%.2f"|format(juego[2]) }} USD</span>
+
+                <!-- El flag del trailer ahora está en el índice 7 -->
+                {% if juego[7] == 1 %}
+                <div style="margin-top:0.8rem;">
+                    <button class="btn-trailer-toggle" onclick="toggleTrailer(this, {{ juego[0] }})" id="trailer-btn-{{ juego[0] }}">
+                        🎬 Ver Trailer
+                    </button>
+                    <div class="trailer-container" id="trailer-{{ juego[0] }}" style="display:none; margin-top:0.6rem;">
+                        <video style="width:100%; border-radius:var(--radius-sm);" controls preload="none">
+                            <source src="/trailer-juego/{{ juego[0] }}" type="video/mp4">
+                            Tu navegador no soporta video HTML5.
+                        </video>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer-custom">
+                {% if session.get('rol') == 'USUARIO' %}
+                <form action="{{ url_for('cart.agregar', id_juego=juego[0]) }}" method="POST">
+                    <button type="submit" class="btn-glow" style="width: 100%;">
+                        🛒 Agregar al Carrito
+                    </button>
+                </form>
+                {% elif session.get('rol') == 'ADMIN' %}
+                <form action="/admin/revocar-juego/{{ juego[0] }}" method="POST" onsubmit="return confirm('¿Estás seguro de que deseas quitar este juego del catálogo público? Los usuarios que ya lo compraron seguirán teniéndolo en su biblioteca.');">
+                    <button type="submit" class="btn-glow" style="width: 100%; background: var(--error-color); border-color: var(--error-color); box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);">
+                        🚫 Revocar / Quitar Juego
+                    </button>
+                </form>
+                {% else %}
+                <button class="btn-glow" style="width: 100%; opacity: 0.5; cursor: not-allowed;" disabled>
+                    Solo usuarios pueden comprar
+                </button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state" style="grid-column: 1 / -1;">
+            <div class="empty-icon">🎮</div>
+            <p>No hay juegos aprobados en el catálogo en este momento.</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function toggleTrailer(btn, id) {
+    const container = document.getElementById('trailer-' + id);
+    const video = container.querySelector('video');
+    
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        btn.textContent = '⏹️ Ocultar Trailer';
+        video.play();
+    } else {
+        container.style.display = 'none';
+        btn.textContent = '🎬 Ver Trailer';
+        video.pause();
+        video.currentTime = 0;
+    }
+}
+</script>
+{% endblock %}

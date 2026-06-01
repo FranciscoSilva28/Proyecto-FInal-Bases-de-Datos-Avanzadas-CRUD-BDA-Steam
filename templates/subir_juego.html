@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Subir Juego - Steam BDA{% endblock %}
+
+{% block content %}
+<div style="max-width:700px; margin:0 auto;">
+    <div class="glass-panel">
+        <div class="glass-panel-header">
+            <h5>📤 Publicar Nuevo Videojuego</h5>
+        </div>
+        <div class="glass-panel-body">
+            <form action="/empresa/subir-juego" method="POST" enctype="multipart/form-data">
+                <div class="form-floating-custom">
+                    <label>Título del Juego</label>
+                    <input type="text" name="titulo" class="form-input" required id="game-title">
+                </div>
+                
+                <div class="form-floating-custom">
+                    <label>Descripción</label>
+                    <textarea name="descripcion" class="form-input" rows="4" required id="game-desc"></textarea>
+                </div>
+                
+                <div class="form-floating-custom">
+                    <label>Géneros (Presiona Ctrl/Cmd para elegir varios)</label>
+                    <select name="generos" class="form-input" multiple required style="height: 120px; padding: 0.5rem;">
+                        {% for g in generos %}
+                            <option value="{{ g[0] }}">{{ g[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-floating-custom">
+                    <label>Precio (USD)</label>
+                    <input type="number" name="precio" step="0.01" min="0" class="form-input" required id="game-price">
+                </div>
+
+                <div class="form-floating-custom">
+                    <label>Modo de Almacenamiento</label>
+                    <select name="modo_almacenamiento" class="form-input" id="storage-mode">
+                        <option value="BLOB" selected>💾 Datos Binarios en Oracle (BLOB)</option>
+                        <option value="RUTA">📁 Archivo en Disco (Ruta)</option>
+                    </select>
+                    <small style="color:var(--text-muted); margin-top:0.3rem; display:block;">BLOB guarda los bytes directamente en Oracle. RUTA guarda el archivo en el servidor y solo almacena la ruta.</small>
+                </div>
+                
+                <div class="file-input-wrapper" style="margin-bottom:1rem;">
+                    <label style="font-weight:600; font-size:0.9rem; color:var(--text-secondary); display:block; margin-bottom:0.8rem;">🖼️ Portada del Juego</label>
+                    <input type="file" name="portada" accept="image/*" required id="game-cover">
+                    <small>Imagen BLOB en Oracle — JPG, PNG (máx. recomendado: 2MB)</small>
+                </div>
+
+                <div class="file-input-wrapper">
+                    <label style="font-weight:600; font-size:0.9rem; color:var(--text-secondary); display:block; margin-bottom:0.8rem;">🎬 Trailer del Juego</label>
+                    <input type="file" name="trailer" accept="video/mp4,video/webm" id="game-trailer">
+                    <small>Video BLOB en Oracle — MP4 o WebM (máx. recomendado: 50MB)</small>
+                    <div id="trailer-preview" style="margin-top:1rem; display:none;">
+                        <video id="trailer-video-preview" style="width:100%; border-radius:var(--radius-sm); max-height:250px;" controls></video>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn-success-cool" style="width:100%; margin-top:1.5rem; padding:0.9rem;" id="submit-game">
+                    Subir Juego (Pendiente de Aprobación)
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Vista previa del trailer antes de subirlo
+    document.getElementById('game-trailer').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        const preview = document.getElementById('trailer-preview');
+        const video = document.getElementById('trailer-video-preview');
+        
+        if (file) {
+            // Validar tamaño (50MB máximo recomendado)
+            if (file.size > 50 * 1024 * 1024) {
+                alert('El archivo es muy grande. Se recomienda un máximo de 50MB para un buen rendimiento.');
+            }
+            const url = URL.createObjectURL(file);
+            video.src = url;
+            preview.style.display = 'block';
+        } else {
+            preview.style.display = 'none';
+            video.src = '';
+        }
+    });
+</script>
+{% endblock %}

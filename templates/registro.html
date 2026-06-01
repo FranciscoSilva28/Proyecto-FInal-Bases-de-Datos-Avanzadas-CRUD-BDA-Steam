@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Registro - Steam BDA{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card auth-card-wide">
+        <h1 class="auth-title">Crear Cuenta</h1>
+        <p class="auth-subtitle">Únete a la comunidad gamer</p>
+        
+        <form method="POST" action="/registro">
+            <div class="form-floating-custom">
+                <label>Nombre de Usuario</label>
+                <input type="text" name="username" class="form-input" placeholder="Tu nombre de usuario" required maxlength="30" id="reg-username">
+            </div>
+            
+            <div class="form-floating-custom">
+                <label>Correo Electrónico</label>
+                <input type="email" name="email" class="form-input" placeholder="ejemplo@correo.com" required maxlength="100" id="reg-email">
+            </div>
+            
+            <div class="form-floating-custom">
+                <label>Contraseña</label>
+                <input type="password" name="password" class="form-input" placeholder="Mínimo 6 caracteres" required minlength="6" id="reg-password">
+            </div>
+            
+            <div class="form-floating-custom">
+                <label>Confirmar Contraseña</label>
+                <input type="password" name="password_confirm" class="form-input" placeholder="Repite tu contraseña" required minlength="6" id="reg-password-confirm">
+            </div>
+
+            <label style="color: var(--text-secondary); font-weight: 500; font-size: 0.85rem; margin-bottom: 0.5rem; display: block;">
+                Tipo de Cuenta
+            </label>
+            <div class="role-options">
+                <div class="role-option">
+                    <input type="radio" name="rol" value="USUARIO" id="rol-usuario" checked>
+                    <label for="rol-usuario">
+                        <span class="role-icon">🎮</span>
+                        <span class="role-name">Jugador</span>
+                    </label>
+                </div>
+                <div class="role-option">
+                    <input type="radio" name="rol" value="EMPRESA" id="rol-empresa">
+                    <label for="rol-empresa">
+                        <span class="role-icon">🏢</span>
+                        <span class="role-name">Empresa</span>
+                    </label>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-glow" style="width:100%; margin-top:0.5rem;" id="reg-submit">
+                Crear Cuenta
+            </button>
+        </form>
+        
+        <div class="auth-toggle">
+            ¿Ya tienes cuenta? <a href="/login">Inicia sesión</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

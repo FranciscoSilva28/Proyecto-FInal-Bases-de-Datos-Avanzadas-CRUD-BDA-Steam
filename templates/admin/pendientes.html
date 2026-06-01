@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Solicitudes de Juegos - Admin{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; flex-wrap:wrap; gap:1rem;">
+    <div>
+        <h2 style="font-weight:800; font-size:1.8rem; background:var(--gradient-accent); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">
+            ⚙️ Panel de Administración
+        </h2>
+        <p style="color:var(--text-muted); margin-top:0.3rem;">Gestión de solicitudes de publicación de juegos.</p>
+    </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <a href="{{ url_for('admin.actividad_usuarios') }}" class="btn-secondary-cool" id="activity-link">📊 Actividad de Usuarios</a>
+        <form action="/admin/respaldo-videojuegos" method="POST" onsubmit="return confirm('¿Crear respaldo completo de la tabla VIDEOJUEGOS?');" style="display:inline;">
+            <button type="submit" class="btn-warning-cool" id="backup-btn">🗄️ Respaldar BD (CTAS)</button>
+        </form>
+    </div>
+</div>
+
+<div class="glass-panel">
+    <div class="glass-panel-header">
+        <h5>🔍 Solicitudes de Empresas — Juegos en Revisión</h5>
+    </div>
+    <table class="table-custom">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Título</th>
+                <th>Empresa</th>
+                <th>Precio</th>
+                <th>Fecha de Subida</th>
+                <th>Acción</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if pendientes %}
+                {% for juego in pendientes %}
+                <tr>
+                    <td style="color:var(--text-muted);">#{{ juego[0] }}</td>
+                    <td style="font-weight:700;">{{ juego[1] }}</td>
+                    <td>
+                        <span style="background:rgba(139,92,246,0.15); color:#a78bfa; padding:0.2rem 0.6rem; border-radius:20px; font-size:0.8rem; font-weight:600;">
+                            🏢 {{ juego[4] }}
+                        </span>
+                    </td>
+                    <td style="color:var(--accent-emerald); font-weight:600;">${{ "%.2f"|format(juego[2]) }}</td>
+                    <td style="color:var(--text-secondary);">{{ juego[3] }}</td>
+                    <td>
+                        <div style="display:flex; gap:0.4rem;">
+                            <form action="/admin/aprobar-juego/{{ juego[0] }}" method="POST" style="display:inline;">
+                                <button type="submit" class="btn-success-cool" style="padding:0.4rem 1rem; font-size:0.85rem;" id="approve-{{ juego[0] }}">✅ Aprobar</button>
+                            </form>
+                            <form action="/admin/denegar-juego/{{ juego[0] }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Estás seguro de denegar este juego?');">
+                                <button type="submit" class="btn-danger-cool" style="padding:0.4rem 1rem; font-size:0.85rem;" id="deny-{{ juego[0] }}">❌ Denegar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="6">
+                        <div class="empty-state">
+                            <div class="empty-icon">✨</div>
+                            <p>No hay solicitudes pendientes de revisión.</p>
+                        </div>
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Tabla de Juegos Revocados -->
+<div class="glass-panel" style="margin-top: 2rem; border-color: rgba(239, 68, 68, 0.3);">
+    <div class="glass-panel-header" style="background: rgba(239, 68, 68, 0.1);">
+        <h5 style="color: var(--error-color);">🚫 Juegos Revocados / Rechazados</h5>
+    </div>
+    <table class="table-custom">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Título</th>
+                <th>Empresa</th>
+                <th>Precio</th>
+                <th>Fecha Modificación</th>
+                <th>Acción</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if revocados %}
+                {% for juego in revocados %}
+                <tr>
+                    <td style="color:var(--text-muted);">#{{ juego[0] }}</td>
+                    <td style="font-weight:700; color:var(--text-primary);">{{ juego[1] }}</td>
+                    <td>
+                        <span style="background:rgba(139,92,246,0.15); color:#a78bfa; padding:0.2rem 0.6rem; border-radius:20px; font-size:0.8rem; font-weight:600;">
+                            🏢 {{ juego[4] }}
+                        </span>
+                    </td>
+                    <td style="color:var(--accent-emerald); font-weight:600;">${{ "%.2f"|format(juego[2]) }}</td>
+                    <td style="color:var(--text-secondary);">{{ juego[3] }}</td>
+                    <td>
+                        <div style="display:flex; gap:0.4rem;">
+                            <form action="/admin/restaurar-juego/{{ juego[0] }}" method="POST" onsubmit="return confirm('¿Restaurar este juego? Volverá a estar disponible en el catálogo público y se re-establecerán todas las bibliotecas de los usuarios que lo tenían.');">
+                                <button type="submit" class="btn-success-cool" style="padding:0.4rem 1rem; font-size:0.85rem; box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);" id="restore-{{ juego[0] }}">♻️ Restaurar</button>
+                            </form>
+                            <form action="/admin/eliminar-juego/{{ juego[0] }}" method="POST" onsubmit="return confirm('⚠️ ELIMINACIÓN PERMANENTE ⚠️\n\nEsta acción es IRREVERSIBLE. Se borrarán:\n- El juego y todos sus datos\n- Las calificaciones asociadas\n- Los detalles de pedido\n- Los respaldos de biblioteca\n\n¿Estás absolutamente seguro?');">
+                                <button type="submit" class="btn-danger-cool" style="padding:0.4rem 1rem; font-size:0.85rem;" id="delete-{{ juego[0] }}">🗑️ Eliminar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="6">
+                        <div class="empty-state" style="padding: 2rem;">
+                            <div class="empty-icon">✓</div>
+                            <p>No hay juegos revocados en el sistema.</p>
+                        </div>
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Mi Biblioteca - Steam BDA{% endblock %}
+
+{% block content %}
+<style>
+/* Estilos exclusivos para la estantería de juegos */
+.grid-library {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 2rem;
+    margin-top: 2rem;
+}
+.library-game {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 3/4; /* Formato retrato/poster */
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+    background: var(--bg-secondary);
+}
+.library-game:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 15px 35px rgba(59, 130, 246, 0.4);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+}
+.library-game img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: filter 0.3s;
+}
+.library-game:hover img {
+    filter: brightness(0.4) blur(2px);
+}
+.library-game-overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0; top: 0;
+    padding: 1.5rem;
+    opacity: 0;
+    transition: opacity 0.3s;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+.library-game:hover .library-game-overlay {
+    opacity: 1;
+}
+.library-game-overlay h4 {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: white;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+}
+/* Inputs minimalistas para la reseña en el hover */
+.review-mini-input {
+    width: 100%;
+    background: rgba(10, 14, 26, 0.8);
+    color: white;
+    border: 1px solid var(--accent-primary);
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    outline: none;
+}
+.review-mini-input::placeholder { color: #94a3b8; }
+.btn-mini-submit {
+    width: 100%;
+    background: var(--gradient-primary);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+</style>
+
+<div class="page-header" style="margin-bottom: 1rem;">
+    <h2>📚 Mi Biblioteca Virtual</h2>
+    <p>Tienes <strong>{{ total_juegos }}</strong> juegos adquiridos.</p>
+</div>
+
+<div class="grid-library">
+    {% if juegos %}
+        {% for juego in juegos %}
+        <div class="library-game">
+            <img src="/imagen-juego/{{ juego[0] }}" alt="Portada de {{ juego[1] }}">
+            
+            <div class="library-game-overlay">
+                <h4>{{ juego[1] }}</h4>
+                <form action="/reviews/calificar/{{ juego[0] }}" method="POST" style="width: 100%;">
+                    <select name="puntuacion" class="review-mini-input" style="color:#fbbf24; font-weight: bold; text-align:center;">
+                        <option value="5">⭐⭐⭐⭐⭐ (5)</option>
+                        <option value="4">⭐⭐⭐⭐ (4)</option>
+                        <option value="3">⭐⭐⭐ (3)</option>
+                        <option value="2">⭐⭐ (2)</option>
+                        <option value="1">⭐ (1)</option>
+                    </select>
+                    <textarea name="comentario" class="review-mini-input" placeholder="Tu reseña rápida..." rows="2" required></textarea>
+                    <button type="submit" class="btn-mini-submit">Calificar</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state" style="grid-column: 1 / -1;">
+            <div class="empty-icon">🎮</div>
+            <p>Aún no tienes juegos en tu biblioteca. ¡Ve al catálogo para agregar algunos!</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Iniciar Sesión - Steam BDA{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <h1 class="auth-title">Bienvenido</h1>
+        <p class="auth-subtitle">Inicia sesión para continuar</p>
+        
+        <form method="POST" action="/login">
+            <div class="form-floating-custom">
+                <label>Correo Electrónico</label>
+                <input type="email" name="email" class="form-input" placeholder="ejemplo@correo.com" required id="login-email">
+            </div>
+            <div class="form-floating-custom">
+                <label>Contraseña</label>
+                <input type="password" name="password" class="form-input" placeholder="••••••••" required id="login-password">
+            </div>
+            <button type="submit" class="btn-glow" style="width:100%; margin-top:0.5rem;" id="login-submit">
+                Ingresar
+            </button>
+        </form>
+        
+        <div class="auth-toggle">
+            ¿No tienes cuenta? <a href="/registro">Crea una aquí</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

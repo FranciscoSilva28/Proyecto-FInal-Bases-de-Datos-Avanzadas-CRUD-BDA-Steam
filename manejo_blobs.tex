@@ -1,0 +1,188 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+
+\geometry{top=2.5cm, bottom=2.5cm, left=3cm, right=3cm}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\title{\textbf{Guía Técnica: Arquitectura Física, BLOBs y Auditoría} \\ \Large{Proyecto: Steam BDA}}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{1. Creación y Uso de Tablespaces}
+Los \textbf{Tablespaces} son las unidades lógicas de almacenamiento en Oracle. Se utilizan para agrupar físicamente los datos en el disco duro. En este proyecto, su propósito principal es el \textbf{rendimiento}: separar físicamente los datos puros de los índices, evitando contención en la lectura y escritura del disco.
+
+\textbf{Ubicación en el código:} Esta creación se realiza al inicio del archivo \texttt{esquema.sql}.
+
+\begin{lstlisting}[language=SQL, caption=esquema.sql (Creación de Tablespaces)]
+-- Separamos los datos de los indices para mejorar el I/O del disco
+CREATE TABLESPACE ts_datos DATAFILE 'ts_datos.dbf' SIZE 100M AUTOEXTEND ON;
+CREATE TABLESPACE ts_indices DATAFILE 'ts_indices.dbf' SIZE 50M AUTOEXTEND ON;
+
+-- Ejemplo de asignacion de una tabla al tablespace de datos:
+CREATE TABLE usuario (
+   -- columnas...
+) TABLESPACE ts_datos;
+
+-- Ejemplo de asignacion de un indice al tablespace de indices:
+CREATE INDEX idx_usuario_email ON usuario(email) TABLESPACE ts_indices;
+\end{lstlisting}
+
+\section{2. Manejo de Archivos Pesados (BLOB)}
+
+\subsection{Carga de Imágenes y Videos (Upload)}
+\textbf{Ubicación:} Archivo \texttt{controllers/games\_controller.py}, dentro de la función \texttt{subir\_juego()} (Ruta: \texttt{/empresa/subir-juego}).
+
+Cuando una empresa sube un juego, Flask recibe los binarios en memoria. Se utiliza la función nativa \texttt{.read()} para extraer los bytes puros y luego se inyectan en Oracle mediante \textit{Bind Variables} (variables seguras).
+
+\begin{lstlisting}[language=Python, caption=games\_controller.py (Carga de BLOBs)]
+portada_file = request.files.get('portada')
+trailer_file = request.files.get('trailer')
+
+# Extraemos los bytes directamente del formulario multipart
+portada_blob = portada_file.read() if portada_file else None
+trailer_blob = trailer_file.read() if trailer_file else None
+
+# Insercion usando Bind Variables (:portada, :trailer)
+sql = """INSERT INTO videojuego (id_empresa, titulo, portada, trailer) 
+         VALUES (:empresa, :titulo, :portada, :trailer)"""
+
+cursor.execute(sql, {
+    "empresa": session['usuario_id'],
+    "titulo": titulo,
+    "portada": portada_blob,
+    "trailer": trailer_blob
+})
+\end{lstlisting}
+
+\subsection{Visualización y Transmisión (Streaming)}
+\textbf{Ubicación de extracción:} \texttt{controllers/games\_controller.py}.\\
+\textbf{Ubicación de consumo (frontend):} \texttt{templates/catalogo.html}.
+
+No podemos apuntar a un archivo estático ".mp4" tradicional porque el video está incrustado dentro de Oracle. Por ello, el controlador Flask extrae sus bytes de la base de datos y los devuelve engañando al navegador con una cabecera (\texttt{mimetype}). Luego, la plantilla HTML consume esa ruta como si fuera un video normal.
+
+\begin{lstlisting}[language=Python, caption=games\_controller.py (Streaming MIME)]
+@games_bp.route('/trailer-juego/<int:id_juego>')
+def trailer_juego(id_juego):
+    cursor.execute("SELECT trailer FROM videojuego WHERE id_juego = :1", [id_juego])
+    row = cursor.fetchone()
+    
+    if row and row[0]:
+        blob_data = row[0].read() # Lee los bytes del disco de Oracle
+        # Retorna el binario como si fuera un video MP4
+        return Response(blob_data, mimetype='video/mp4')
+\end{lstlisting}
+
+\begin{lstlisting}[language=HTML, caption=catalogo.html (Frontend)]
+<!-- Reproduccion inmersiva consumiendo la ruta de Flask que devuelve el BLOB -->
+<video controls preload="none">
+    <source src="/trailer-juego/{{ juego[0] }}" type="video/mp4">
+</video>
+\end{lstlisting}
+
+\subsection{Modalidad Híbrida: Archivo en Disco (RUTA)}
+Además del almacenamiento de datos binarios directamente en Oracle (BLOB), el sistema ahora soporta una modalidad de almacenamiento por ruta. Cuando una empresa selecciona el modo "Archivo en Disco (Ruta)", los archivos multimedia se guardan físicamente en el servidor dentro de los directorios \texttt{static/uploads/portadas} y \texttt{static/uploads/trailers}. 
+
+La base de datos, en este caso, solo guarda la cadena de texto con la ruta relativa del archivo en las columnas \texttt{portada\_ruta} y \texttt{trailer\_ruta}. 
+
+\begin{lstlisting}[language=Python, caption=games\_controller.py (Carga por RUTA)]
+# Se genera un nombre unico para evitar colisiones
+filename = f"{id_juego}_{uuid.uuid4().hex[:8]}.mp4"
+ruta = os.path.join('static', 'uploads', 'trailers', filename)
+trailer_file.save(ruta) # Guarda fisico en el servidor de Flask
+
+# Solo se guarda la cadena de la ruta en la base de datos
+cursor.execute("UPDATE videojuego SET trailer_ruta = :1 WHERE id_juego = :2", [ruta, id_juego])
+\end{lstlisting}
+
+La ventaja de este método híbrido es que reduce el tamaño de la base de datos y mejora el rendimiento de lectura. El controlador es lo suficientemente inteligente para detectar si un juego utiliza el modo BLOB o RUTA (mediante la columna \texttt{modo\_almacenamiento}) y servir el archivo apropiadamente.
+
+\newpage
+\section{3. Comandos SQL*Plus para Auditoría (Diccionario de Datos)}
+A continuación se listan los comandos exactos para auditar y revisar todo el ecosistema y la arquitectura física desde la terminal de Oracle Database.
+
+\subsection{A. Ingreso al Sistema como Administrador}
+Para auditar la base de datos con los máximos privilegios posibles, se debe abrir la consola/terminal del sistema operativo y ejecutar:
+
+\begin{lstlisting}[language=bash]
+# Ingresar a Oracle como Administrador Supremo (SYSDBA)
+sqlplus sys as sysdba
+
+# O bien, ingresar con el usuario dueno del esquema de tu proyecto:
+# (Sustituye "proyecto_bda" y "password" por los tuyos)
+sqlplus proyecto_bda/password@localhost:1521/XEPDB1
+\end{lstlisting}
+
+\subsection{B. Consultas de Auditoría al Diccionario de Datos}
+Una vez dentro del prompt \texttt{SQL>}, ejecuta estas consultas para demostrar los objetos creados:
+
+\begin{lstlisting}[language=SQL, caption=Consultas Administrativas a Diccionarios]
+-- 1. CONSULTAR LOS USUARIOS (DBA_USERS)
+-- Ver todos los usuarios a nivel motor de base de datos, su estado y su espacio.
+SELECT username, account_status, created 
+FROM dba_users 
+WHERE default_tablespace IN ('TS_DATOS', 'USERS');
+
+-- 2. LISTAR LAS TABLAS DEL ESQUEMA (USER_TABLES)
+-- Valida que las tablas existen, el tablespace donde viven y su parametro fisico PCTFREE
+SELECT table_name, tablespace_name, pct_free 
+FROM user_tables 
+ORDER BY table_name;
+
+-- 3. LISTAR LOS TRIGGERS ACTIVOS (USER_TRIGGERS)
+-- Comprueba que la logica de negocio inquebrantable (Disparadores) este compilada
+SELECT trigger_name, trigger_type, triggering_event, table_name, status 
+FROM user_triggers;
+
+-- 4. VER EL CODIGO FUENTE INTERNO DE UN TRIGGER ESPECIFICO
+-- Muestra el codigo PL/SQL guardado dentro de Oracle
+SELECT trigger_body 
+FROM user_triggers 
+WHERE trigger_name = 'TRG_VALIDAR_COMPRA_RESENA';
+
+-- 5. VERIFICAR PRIVILEGIOS Y PERMISOS DEL USUARIO (SESSION_PRIVS)
+-- Demuestra todos los permisos (Roles, Grants) que posee la sesion activa
+SELECT privilege 
+FROM session_privs;
+
+-- 6. REVISAR EN DONDE ESTAN GUARDADOS TUS VIDEOS Y BLOB (USER_LOBS)
+-- Comando sumamente tecnico para que el DBA pueda revisar en que segmento 
+-- matematico y disco duro se estan alojando las imagenes y trailers
+SELECT table_name, column_name, segment_name, tablespace_name 
+FROM user_lobs 
+WHERE table_name = 'VIDEOJUEGO';
+\end{lstlisting}
+
+\end{document}

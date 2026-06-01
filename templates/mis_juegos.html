@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Mis Juegos - Steam BDA{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem; flex-wrap:wrap; gap:1rem;">
+    <div>
+        <h2 style="font-weight:800; font-size:1.8rem; background:var(--gradient-accent); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">
+            📋 Mis Juegos Publicados
+        </h2>
+        <p style="color:var(--text-muted); margin-top:0.3rem;">Gestiona todos los juegos de tu empresa.</p>
+    </div>
+    <div>
+        <a href="{{ url_for('games.subir_juego') }}" class="btn-success-cool" style="padding:0.5rem 1.2rem; font-size:0.9rem;" id="upload-new-game">📤 Subir Nuevo Juego</a>
+    </div>
+</div>
+
+<div class="glass-panel">
+    <div class="glass-panel-header">
+        <h5>🎮 Listado de Juegos</h5>
+    </div>
+    <table class="table-custom">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Título</th>
+                <th>Precio</th>
+                <th>Estado</th>
+                <th>Modo</th>
+                <th>Fecha</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if juegos %}
+                {% for juego in juegos %}
+                <tr>
+                    <td style="color:var(--text-muted);">#{{ juego[0] }}</td>
+                    <td style="font-weight:700;">{{ juego[1] }}</td>
+                    <td style="color:var(--accent-emerald); font-weight:600;">${{ "%.2f"|format(juego[2]) }}</td>
+                    <td>
+                        {% if juego[3] == 'AP' %}
+                            <span style="background:rgba(16,185,129,0.15); color:#34d399; padding:0.2rem 0.6rem; border-radius:20px; font-size:0.8rem; font-weight:600;">
+                                ✅ Aprobado
+                            </span>
+                        {% elif juego[3] == 'PE' %}
+                            <span style="background:rgba(251,191,36,0.15); color:#fbbf24; padding:0.2rem 0.6rem; border-radius:20px; font-size:0.8rem; font-weight:600;">
+                                ⏳ Pendiente
+                            </span>
+                        {% elif juego[3] == 'RE' %}
+                            <span style="background:rgba(239,68,68,0.15); color:#f87171; padding:0.2rem 0.6rem; border-radius:20px; font-size:0.8rem; font-weight:600;">
+                                ❌ Revocado
+                            </span>
+                        {% else %}
+                            <span style="background:rgba(148,163,184,0.15); color:#94a3b8; padding:0.2rem 0.6rem; border-radius:20px; font-size:0.8rem; font-weight:600;">
+                                {{ juego[3] }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if juego[5] == 'RUTA' %}
+                            <span style="background:rgba(139,92,246,0.15); color:#a78bfa; padding:0.2rem 0.6rem; border-radius:20px; font-size:0.8rem; font-weight:600;">
+                                📁 RUTA
+                            </span>
+                        {% else %}
+                            <span style="background:rgba(59,130,246,0.15); color:#60a5fa; padding:0.2rem 0.6rem; border-radius:20px; font-size:0.8rem; font-weight:600;">
+                                💾 BLOB
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td style="color:var(--text-secondary);">{{ juego[4] }}</td>
+                    <td>
+                        <div style="display:flex; gap:0.4rem;">
+                            <a href="{{ url_for('games.editar_juego', id_juego=juego[0]) }}" class="btn-secondary-cool" style="padding:0.4rem 1rem; font-size:0.85rem; text-decoration:none;" id="edit-{{ juego[0] }}">✏️ Editar</a>
+                            {% if juego[3] == 'PE' %}
+                                <form action="{{ url_for('games.mis_juegos') }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Estás seguro de retirar este juego?');">
+                                    <input type="hidden" name="retirar_id" value="{{ juego[0] }}">
+                                    <button type="submit" class="btn-danger-cool" style="padding:0.4rem 1rem; font-size:0.85rem;" id="withdraw-{{ juego[0] }}">🗑️ Retirar</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="7">
+                        <div class="empty-state">
+                            <div class="empty-icon">🎮</div>
+                            <p>Aún no has publicado ningún juego.</p>
+                            <a href="{{ url_for('games.subir_juego') }}" class="btn-success-cool" style="margin-top:1rem; padding:0.5rem 1.5rem; font-size:0.9rem; text-decoration:none;">📤 Subir tu primer juego</a>
+                        </div>
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Editar Juego - Steam BDA{% endblock %}
+
+{% block content %}
+<div style="max-width:700px; margin:0 auto;">
+    <div style="margin-bottom:1.5rem;">
+        <a href="{{ url_for('games.mis_juegos') }}" class="btn-secondary-cool" style="padding:0.4rem 1rem; font-size:0.85rem; text-decoration:none;" id="back-to-list">← Volver a Mis Juegos</a>
+    </div>
+
+    <div class="glass-panel">
+        <div class="glass-panel-header">
+            <h5>✏️ Editar Juego — {{ juego[1] }}</h5>
+        </div>
+        <div class="glass-panel-body">
+            <form action="{{ url_for('games.editar_juego', id_juego=id_juego) }}" method="POST" enctype="multipart/form-data">
+                <div class="form-floating-custom">
+                    <label>Título del Juego</label>
+                    {% if juego[3] == 'AP' %}
+                        <input type="text" name="titulo" class="form-input" value="{{ juego[1] }}" disabled title="No se puede cambiar el título de un juego aprobado" id="game-title">
+                        <small style="color:var(--text-muted); margin-top:0.3rem; display:block;">🔒 El título no se puede modificar en juegos aprobados (protegido por trigger de BD).</small>
+                    {% else %}
+                        <input type="text" name="titulo" class="form-input" value="{{ juego[1] }}" readonly id="game-title">
+                        <small style="color:var(--text-muted); margin-top:0.3rem; display:block;">El título no se modifica desde esta vista.</small>
+                    {% endif %}
+                </div>
+
+                <div class="form-floating-custom">
+                    <label>Descripción</label>
+                    <textarea name="descripcion" class="form-input" rows="4" required id="game-desc">{{ descripcion_text }}</textarea>
+                </div>
+
+                <div class="form-floating-custom">
+                    <label>Géneros (Presiona Ctrl/Cmd para elegir varios)</label>
+                    <select name="generos" class="form-input" multiple required style="height: 120px; padding: 0.5rem;">
+                        {% for g in generos %}
+                            <option value="{{ g[0] }}" {% if g[0] in generos_actuales %}selected{% endif %}>{{ g[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-floating-custom">
+                    <label>Precio (USD)</label>
+                    <input type="number" name="precio" step="0.01" min="0" class="form-input" value="{{ juego[2] }}" required id="game-price">
+                    {% if juego[3] == 'AP' %}
+                        <small style="color:var(--text-muted); margin-top:0.3rem; display:block;">⚠️ No se permite incrementar el precio más del 20% en juegos aprobados.</small>
+                    {% endif %}
+                </div>
+
+                <div class="form-floating-custom">
+                    <label>Modo de Almacenamiento</label>
+                    <select name="modo_almacenamiento" class="form-input" id="storage-mode">
+                        <option value="BLOB" {% if juego[4] == 'BLOB' or not juego[4] %}selected{% endif %}>💾 Datos Binarios en Oracle (BLOB)</option>
+                        <option value="RUTA" {% if juego[4] == 'RUTA' %}selected{% endif %}>📁 Archivo en Disco (Ruta)</option>
+                    </select>
+                    <small style="color:var(--text-muted); margin-top:0.3rem; display:block;">BLOB guarda los bytes directamente en Oracle. RUTA guarda el archivo en el servidor y solo almacena la ruta.</small>
+                </div>
+
+                <div class="file-input-wrapper" style="margin-bottom:1rem;">
+                    <label style="font-weight:600; font-size:0.9rem; color:var(--text-secondary); display:block; margin-bottom:0.8rem;">🖼️ Portada del Juego</label>
+                    <div style="margin-bottom:0.8rem; padding:0.8rem; border-radius:var(--radius-sm); background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06);">
+                        <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:0.5rem;">Portada actual:</p>
+                        <img src="{{ url_for('games.imagen_juego', id_juego=id_juego) }}" alt="Portada actual" style="max-width:200px; border-radius:var(--radius-sm); border:1px solid rgba(255,255,255,0.1);" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                        <p style="display:none; color:var(--text-muted); font-size:0.85rem;">Sin portada disponible.</p>
+                    </div>
+                    <input type="file" name="portada" accept="image/*" id="game-cover">
+                    <small>Dejar vacío para conservar la portada actual.</small>
+                </div>
+
+                <div class="file-input-wrapper">
+                    <label style="font-weight:600; font-size:0.9rem; color:var(--text-secondary); display:block; margin-bottom:0.8rem;">🎬 Trailer del Juego</label>
+                    <input type="file" name="trailer" accept="video/mp4,video/webm" id="game-trailer">
+                    <small>Dejar vacío para conservar el trailer actual. MP4 o WebM (máx. recomendado: 50MB)</small>
+                    <div id="trailer-preview" style="margin-top:1rem; display:none;">
+                        <video id="trailer-video-preview" style="width:100%; border-radius:var(--radius-sm); max-height:250px;" controls></video>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-success-cool" style="width:100%; margin-top:1.5rem; padding:0.9rem;" id="save-changes">
+                    Guardar Cambios
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Vista previa del trailer antes de subirlo
+    document.getElementById('game-trailer').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        const preview = document.getElementById('trailer-preview');
+        const video = document.getElementById('trailer-video-preview');
+        
+        if (file) {
+            if (file.size > 50 * 1024 * 1024) {
+                alert('El archivo es muy grande. Se recomienda un máximo de 50MB para un buen rendimiento.');
+            }
+            const url = URL.createObjectURL(file);
+            video.src = url;
+            preview.style.display = 'block';
+        } else {
+            preview.style.display = 'none';
+            video.src = '';
+        }
+    });
+</script>
+{% endblock %}

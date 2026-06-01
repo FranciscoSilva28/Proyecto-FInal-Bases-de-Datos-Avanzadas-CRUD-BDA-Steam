@@ -1,0 +1,336 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{float}
+
+\geometry{top=2.5cm, bottom=2.5cm, left=3cm, right=3cm}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{sqlstyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    language=SQL
+}
+\lstset{style=sqlstyle}
+
+\title{\textbf{Documentación Técnica y Arquitectura de Software: Steam BDA} \\ \Large{Implementación de un E-Commerce con Motor Transaccional en Oracle Database}}
+\author{Proyecto Final de Bases de Datos Avanzadas}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introducción}
+El presente documento expone la arquitectura técnica y el diseño transaccional del proyecto "Steam BDA", una plataforma web de distribución digital de videojuegos. Si bien el proyecto cuenta con una interfaz gráfica moderna desarrollada en Python (Flask) y HTML/CSS, el objetivo de esta documentación es demostrar que el verdadero procesamiento (Backend), las reglas de negocio, la integridad de los datos y el rendimiento están implementados enteramente en el motor de \textbf{Oracle Database}.
+
+Flask funciona únicamente como un intermediario (View/Controller), mientras que Oracle actúa como el cerebro del sistema aplicando conceptos avanzados como \textit{Triggers, Stored Procedures, List Partitioning y Bitmap Indexes}.
+
+\section{Perfiles de Usuario y sus Módulos}
+El sistema implementa un modelo de control de acceso basado en roles (RBAC) gestionado directamente desde la base de datos. Existen tres roles principales:
+
+\subsection{1. Administrador (Rol: ADMIN)}
+Es el supervisor de la plataforma. Su módulo no le permite comprar juegos, sino administrar la integridad del ecosistema comercial.
+\begin{itemize}
+    \item \textbf{Módulo de Aprobaciones (Solicitudes):} Visualiza los juegos en estado pendiente (\texttt{PE}) subidos por las empresas. Puede aprobarlos para que sean públicos o denegarlos.
+    \item \textbf{Módulo de Revocación/Restauración:} Puede realizar un \textit{Soft Delete} (quitar del catálogo) a juegos ya aprobados si infringen normas, utilizando el procedimiento \texttt{sp\_revocar\_juego}. Este proceso ahora elimina en cascada el juego de los carritos activos y \textbf{revoca el acceso} de las bibliotecas de los usuarios, respaldando dicha información en la tabla \texttt{biblioteca\_revocada}. Luego puede usar el botón "Restaurar" mediante \texttt{sp\_restaurar\_juego}, el cual devuelve el juego al catálogo y re-establece automáticamente las licencias a los usuarios afectados.
+    \item \textbf{Módulo de Eliminación Permanente:} Si un juego revocado necesita ser borrado físicamente, el administrador puede ejecutar \texttt{sp\_eliminar\_juego\_permanente}, el cual limpia en cascada todas las dependencias (calificaciones, bibliotecas revocadas, detalles de pedido, etc.) y realiza un borrado físico final, dejando un rastro en auditoría.
+    \item \textbf{Módulo de Auditoría:} Consulta la tabla \texttt{auditoria} que es alimentada automáticamente por los \textit{Triggers} del sistema sin intervención humana.
+    \item \textbf{Módulo de Actividad de Usuarios:} Visualiza reportes gerenciales a través de la vista analítica \texttt{v\_actividad\_compras}.
+\end{itemize}
+
+% PARA AGREGAR IMAGENES: Descomenta las siguientes líneas y asegúrate de tener la imagen en la misma carpeta.
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{tu_captura_admin.png} 
+% \caption{Módulo Administrativo y Gestión de Solicitudes}
+% \end{figure}
+
+\subsection{2. Desarrollador / Empresa (Rol: EMPRESA)}
+Representa a los creadores de contenido (Estudios de videojuegos) que buscan publicar sus obras.
+\begin{itemize}
+    \item \textbf{Módulo de Subida de Juegos:} Interfaz que permite a la empresa publicar nuevos títulos indicando título, precio, descripción, y subir archivos multimedia (Carátulas y Trailers de video) eligiendo entre almacenamiento puro en BD (BLOB) o en el disco del servidor (RUTA).
+    \item \textbf{Módulo "Mis Juegos":} Panel administrativo para la empresa donde puede listar todos sus títulos, visualizar su estado de aprobación y modificar sus datos (precio, descripción, multimedia). Esta edición está vigilada por \textit{Triggers} de Oracle para proteger a los consumidores. 
+    \item \textbf{Módulo de Relación Muchos a Muchos (Géneros):} La interfaz presenta una lista múltiple de géneros. Flask captura estos datos y mediante una instrucción \texttt{RETURNING}, Oracle inserta dinámicamente los registros en la tabla puente \texttt{videojuego\_genero}. Todo juego nuevo entra forzosamente en estado Pendiente (\texttt{PE}).
+\end{itemize}
+
+\subsection{3. Usuario Final (Rol: USUARIO)}
+Es el consumidor y cliente final de la plataforma web.
+\begin{itemize}
+    \item \textbf{Módulo del Catálogo Público:} Una galería visual amplia (alimentada por la vista \texttt{v\_catalogo\_publico}) donde solo visualiza los juegos con estado Aprobado (\texttt{AP}).
+    \item \textbf{Módulo del Carrito y Pagos (Checkout):} Carrito de compras temporal en la base de datos que, al confirmarse, dispara el procedimiento de transacción ACID pesada (\texttt{sp\_procesar\_compra}).
+    \item \textbf{Módulo de Biblioteca Virtual:} Espacio personal tipo estantería donde residen permanentemente las licencias adquiridas.
+    \item \textbf{Módulo de Calificaciones (Reseñas):} Componente visual incrustado en la Biblioteca que permite otorgar de 1 a 5 estrellas a un juego. Estos votos se almacenan mediante \textit{List Partitioning} físico.
+\end{itemize}
+
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{tu_captura_catalogo.png} 
+% \caption{Catálogo Público consumiendo Vistas de Oracle}
+% \end{figure}
+
+\section{Arquitectura de la Aplicación (Frontend y Middleware)}
+El sistema web se construyó utilizando el framework Flask (Python) implementando un patrón de diseño basado en \textbf{MVC} (Modelo-Vista-Controlador), pero con el "Modelo" pesado delegado a la base de datos Oracle. Esta estructura modular (utilizando \textit{Blueprints} de Flask) garantiza que el código sea mantenible, escalable y ordenado.
+
+\subsection{Estructura de Archivos Principales}
+\begin{itemize}
+    \item \textbf{\texttt{app.py}:} Es el punto de entrada principal (Entry Point). Su responsabilidad es inicializar la aplicación, registrar los "Blueprints" (módulos), configurar las sesiones de los usuarios y levantar el servidor web local.
+    \item \textbf{\texttt{database.py}:} Contiene la configuración centralizada y el Pool de Conexiones usando el módulo nativo \texttt{oracledb} de Python. Todas las consultas viajan por este archivo.
+\end{itemize}
+
+\subsection{Controladores (Carpeta \texttt{controllers/})}
+Contienen la lógica de enrutamiento (Middleware) y actúan como intermediarios entre las acciones del usuario (clics en botones) y los Procedimientos de Oracle.
+\begin{itemize}
+    \item \textbf{\texttt{auth\_controller.py}:} Gestiona las sesiones seguras, el Inicio de Sesión y el Registro de nuevos usuarios o empresas.
+    \item \textbf{\texttt{admin\_controller.py}:} Protegido por validación de roles. Llama a las vistas de auditoría, las funciones de aprobar, denegar, revocar o restaurar juegos.
+    \item \textbf{\texttt{games\_controller.py}:} Maneja la carga pesada. Captura la subida de nuevos títulos (procesando imágenes y videos BLOB), extrae los géneros relacionales y se encarga de mostrar el Catálogo Público leyendo la vista \texttt{v\_catalogo\_publico}.
+    \item \textbf{\texttt{cart\_controller.py}:} Administra el estado del carrito en la base de datos y detona el procedimiento transaccional \texttt{sp\_procesar\_compra} para efectuar el pago y poblar la biblioteca del usuario.
+    \item \textbf{\texttt{reviews\_controller.py}:} Captura las calificaciones enviadas desde la biblioteca y las inserta en la tabla particionada de Oracle.
+\end{itemize}
+
+\subsection{Vistas y Plantillas (Carpeta \texttt{templates/})}
+Archivos en formato HTML/Jinja2 que construyen la interfaz visual usando la técnica \textit{Glassmorphism} e inyectan dinámicamente los datos traídos desde Oracle.
+\begin{itemize}
+    \item \textbf{\texttt{base.html}:} La plantilla maestra. Contiene la barra de navegación inteligente que muestra enlaces distintos dependiendo del rol activo en la sesión (Usuario, Empresa o Admin).
+    \item \textbf{\texttt{catalogo.html}:} Una cuadrícula (\textit{Grid}) inmersiva que despliega el arte, los géneros y el promedio de estrellas de cada juego aprobado.
+    \item \textbf{\texttt{subir\_juego.html}:} Formulario para que las Empresas publiquen nuevos títulos, adjuntando contenido multimedia (BLOB) y géneros relacionales.
+    \item \textbf{\texttt{biblioteca.html}:} Diseñada como una estantería virtual. Solo muestra las portadas de los juegos comprados; al pasar el ratón (hover) revela un formulario minimalista para dejar calificaciones y reseñas.
+    \item \textbf{\texttt{admin/pendientes.html}:} Panel de control de 2 vías del Administrador, donde puede Aprobar/Denegar solicitudes (estado \texttt{PE}) o Restaurar juegos castigados (estado \texttt{RE}).
+    \item \textbf{\texttt{admin/auditoria.html} y \texttt{actividad.html}:} Tablas de datos en bruto sacadas de las Vistas de Oracle para control gerencial.
+\end{itemize}
+
+\subsection{Estilos Globales (Carpeta \texttt{static/})}
+\begin{itemize}
+    \item \textbf{\texttt{style.css}:} Hoja de estilos en cascada única que le otorga a la plataforma su apariencia \textit{Premium} (temática "Cool-Tone", fondos de cristal desenfocado, colores cianes/azules intensos, botones con bordes luminosos y cuadrículas adaptables). Evita el uso de librerías externas genéricas para tener control de píxel.
+\end{itemize}
+
+\section{Diseño Físico y Almacenamiento Avanzado}
+Para garantizar la eficiencia a largo plazo y la prevención de fragmentación en el disco, se emplearon técnicas propias de un Administrador de Bases de Datos (DBA).
+
+\subsection{Tablespaces y Parámetros PCTFREE / PCTUSED}
+Se separó la carga de Entrada/Salida creando \texttt{ts\_datos} para datos puros y \texttt{ts\_indices} para índices. Además, se personalizaron los bloques físicos en las sentencias de creación:
+
+\begin{lstlisting}
+-- Ejemplo de la tabla Videojuego, reservando 20% del bloque para 
+-- futuras actualizaciones de estado y previniendo "Row Migration".
+CREATE TABLE videojuego (
+    id_juego NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    titulo VARCHAR2(200) NOT NULL,
+    precio NUMBER(10,2) CHECK (precio >= 0),
+    estado VARCHAR2(2) DEFAULT 'PE' CHECK (estado IN ('PE','AP','RE'))
+    -- Resto de columnas omitidas por brevedad...
+) TABLESPACE ts_datos PCTFREE 20;
+
+-- Ejemplo de Auditoría, minimizando el espacio libre a solo el 5% 
+-- debido a su naturaleza de "Solo Inserción" (Append-only).
+CREATE TABLE auditoria (
+    accion VARCHAR2(100),
+    fecha DATE DEFAULT SYSDATE
+) TABLESPACE ts_datos PCTFREE 5;
+\end{lstlisting}
+
+\subsection{Particionamiento Físico (List Partitioning)}
+Para agilizar los reportes sobre los juegos mejores o peores valorados, la tabla \texttt{calificaciones\_part} se seccionó físicamente usando particionamiento de listas basado en la puntuación del 1 al 5:
+
+\begin{lstlisting}
+CREATE TABLE calificaciones_part (
+    id_usuario NUMBER,
+    id_juego NUMBER,
+    puntuacion NUMBER(1) CHECK (puntuacion BETWEEN 1 AND 5),
+    UNIQUE(id_usuario, id_juego)
+) TABLESPACE ts_datos PCTFREE 10 PCTUSED 40
+PARTITION BY LIST (puntuacion) (
+    PARTITION p1 VALUES (1) TABLESPACE ts_datos,
+    PARTITION p2 VALUES (2) TABLESPACE ts_datos,
+    PARTITION p3 VALUES (3) TABLESPACE ts_datos,
+    PARTITION p4 VALUES (4) TABLESPACE ts_datos,
+    PARTITION p5 VALUES (5) TABLESPACE ts_datos
+);
+\end{lstlisting}
+
+\subsection{Índices Especializados (Bitmap)}
+Se implementó un índice en formato de mapa de bits (\texttt{BITMAP INDEX}) sobre la columna \texttt{estado} de la tabla \texttt{videojuego}. A diferencia de los B-Trees convencionales, los Bitmap son ideales para acelerar consultas sobre columnas de muy baja cardinalidad (donde solo hay valores PE, AP, RE).
+\begin{lstlisting}
+CREATE BITMAP INDEX idx_videojuego_estado_bitmap 
+ON videojuego(estado) TABLESPACE ts_indices;
+\end{lstlisting}
+
+\section{Implementación Transaccional del CRUD (PL/SQL)}
+En lugar de procesar la lógica frágil en Python, las transacciones críticas y de modificación múltiple (CRUD) se realizan exclusivamente mediante Procedimientos Almacenados, garantizando las propiedades ACID.
+
+\subsection{Procedimiento de Compra (Transacción Multitabla)}
+El proceso \texttt{sp\_procesar\_compra} transforma el estado del carrito en un pedido final, moviendo licencias y calculando montos en una única transacción controlada.
+
+\begin{lstlisting}
+CREATE OR REPLACE PROCEDURE sp_procesar_compra (
+    p_usuario_id IN NUMBER,
+    p_resultado OUT VARCHAR2
+) AS
+    v_total NUMBER := 0;
+    v_pedido_id NUMBER;
+BEGIN
+    SELECT NVL(SUM(v.precio), 0) INTO v_total
+    FROM carrito c JOIN videojuego v ON c.id_juego = v.id_juego
+    WHERE c.id_usuario = p_usuario_id;
+    
+    IF v_total = 0 THEN
+        p_resultado := 'ERROR: Carrito vacio.';
+        RETURN;
+    END IF;
+
+    -- 1. Insertar la cabecera del pedido
+    INSERT INTO pedido (id_usuario, total, estado)
+    VALUES (p_usuario_id, v_total, 'COMPLETADO')
+    RETURNING id_pedido INTO v_pedido_id;
+
+    -- 2. Recorrer el carrito e insertar en Detalle y Biblioteca
+    FOR reg IN (SELECT c.id_juego, v.precio FROM carrito c 
+                JOIN videojuego v ON c.id_juego = v.id_juego 
+                WHERE c.id_usuario = p_usuario_id) LOOP
+                
+        INSERT INTO detalle_pedido (id_pedido, id_juego, precio_pagado)
+        VALUES (v_pedido_id, reg.id_juego, reg.precio);
+        
+        INSERT INTO biblioteca (id_usuario, id_juego)
+        VALUES (p_usuario_id, reg.id_juego);
+    END LOOP;
+
+    -- 3. Limpiar carrito y consolidar (ACID)
+    DELETE FROM carrito WHERE id_usuario = p_usuario_id;
+    COMMIT;
+    p_resultado := 'OK';
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        RAISE;
+END;
+\end{lstlisting}
+
+\subsection{Revocación de Juegos (Borrado Lógico / Soft Delete)}
+Para respetar las leyes de derechos digitales de los consumidores, en lugar de ejecutar un \texttt{DELETE} destructivo, se programó un procedimiento de borrado lógico que oculta el juego del catálogo público, pero mantiene el historial financiero y de la biblioteca intacto.
+
+\begin{lstlisting}
+CREATE OR REPLACE PROCEDURE sp_revocar_juego (
+    p_juego_id  IN NUMBER,
+    p_admin_id  IN NUMBER,
+    p_resultado OUT VARCHAR2
+) AS
+    v_estado VARCHAR2(2);
+BEGIN
+    SELECT estado INTO v_estado FROM videojuego WHERE id_juego = p_juego_id;
+    
+    IF v_estado != 'AP' THEN
+        p_resultado := 'ERROR: El juego no esta publicado.';
+        RETURN;
+    END IF;
+    
+    -- Respaldar las bibliotecas afectadas antes de borrarlas
+    INSERT INTO biblioteca_revocada (id_biblioteca, id_usuario, id_juego, fecha_adquisicion)
+    SELECT id_biblioteca, id_usuario, id_juego, fecha_adquisicion
+    FROM biblioteca WHERE id_juego = p_juego_id;
+    
+    -- Eliminar de bibliotecas y carritos
+    DELETE FROM biblioteca WHERE id_juego = p_juego_id;
+    DELETE FROM carrito WHERE id_juego = p_juego_id;
+    
+    UPDATE videojuego 
+    SET estado = 'RE', aprobado_por = p_admin_id, fecha_aprobacion = SYSDATE
+    WHERE id_juego = p_juego_id;
+    
+    COMMIT;
+    p_resultado := 'OK';
+END;
+\end{lstlisting}
+
+\section{Reglas de Negocio Estrictas (Triggers)}
+Los Disparadores (Triggers) operan de manera subterránea para asegurar que ningún actor viole las reglas de negocio empresariales, lanzando errores que luego son capturados limpiamente por el frontend de Flask.
+
+\subsection{Validación Lógica de Reseñas}
+La regla dicta que "nadie puede reseñar un producto que no haya comprado". Este Trigger se ejecuta en el pre-proceso de inserción, bloqueando la base de datos si la condición es falsa.
+\begin{lstlisting}
+CREATE OR REPLACE TRIGGER trg_validar_compra_resena
+BEFORE INSERT ON calificaciones_part
+FOR EACH ROW
+DECLARE
+    v_tiene_juego NUMBER;
+BEGIN
+    SELECT COUNT(*) INTO v_tiene_juego FROM biblioteca 
+    WHERE id_usuario = :NEW.id_usuario AND id_juego = :NEW.id_juego;
+    
+    IF v_tiene_juego = 0 THEN
+        RAISE_APPLICATION_ERROR(-20002, 'ERROR: Solo puedes calificar juegos que has comprado y tienes en tu biblioteca.');
+    END IF;
+END;
+\end{lstlisting}
+
+\subsection{Protección al Consumidor (Inmutabilidad)}
+Para evitar fraudes post-venta (ej. un desarrollador cambiando el nombre de un juego exitoso por publicidad de terceros), este Trigger impide modificaciones estructurales una vez que ha sido aprobado (\texttt{estado = 'AP'}).
+\begin{lstlisting}
+CREATE OR REPLACE TRIGGER trg_proteger_juego_aprobado
+BEFORE UPDATE ON videojuego
+FOR EACH ROW
+BEGIN
+    IF :OLD.estado = 'AP' THEN
+        IF :NEW.titulo != :OLD.titulo THEN
+            RAISE_APPLICATION_ERROR(-20004, 'ERROR: No se puede cambiar el titulo de un juego que ya esta publicado y aprobado.');
+        END IF;
+    END IF;
+END;
+\end{lstlisting}
+
+\section{Vistas Complejas y Reporteo}
+Para que la interfaz web reciba la información pre-digerida, se diseñaron Vistas SQL que empaquetan sub-consultas, conteos y funciones.
+
+\subsection{Vista de Catálogo (Uso de Funciones y LISTAGG)}
+Para abstraer la relación de "muchos a muchos" de la tabla de géneros, se utilizó la instrucción avanzada \texttt{LISTAGG}, la cual pivotea las filas relacionales integrándolas en una única cadena de texto separada por comas, eliminando la necesidad de iteraciones costosas en Python.
+
+\begin{lstlisting}
+CREATE OR REPLACE VIEW v_catalogo_publico AS
+SELECT 
+    v.id_juego,
+    v.titulo,
+    v.precio,
+    u.username AS empresa,
+    -- Invocando a una Funcion almacenada
+    fn_promedio_calificacion(v.id_juego) AS calificacion_promedio,
+    -- Subconsulta Escalar para totales
+    (SELECT COUNT(*) FROM calificaciones_part cp WHERE cp.id_juego = v.id_juego) AS num_resenas,
+    -- LISTAGG para consolidacion de Generos
+    (SELECT LISTAGG(g.nombre, ', ') WITHIN GROUP (ORDER BY g.nombre)
+     FROM videojuego_genero vg
+     JOIN genero g ON vg.id_genero = g.id_genero
+     WHERE vg.id_juego = v.id_juego) AS generos
+FROM videojuego v
+JOIN usuario u ON v.id_empresa = u.id_usuario
+WHERE v.estado = 'AP';
+\end{lstlisting}
+
+\section{Conclusión}
+La arquitectura tecnológica de "Steam BDA" evidencia la madurez de \textbf{Oracle Database} como pilar para ecosistemas de gran escala. Mientras muchas plataformas modernas delegan ingenuamente reglas críticas a lenguajes interpretados en backend, este proyecto blinda sus reglas de negocio de manera monolítica usando la \textbf{Integridad Referencial y Transaccional} a nivel de Hardware y Datos. Al implementar Particionamiento Físico, Triggers Bloqueantes, Transacciones ACID y Vistas Analíticas, el E-Commerce entrega un rendimiento sumamente robusto y tolerante a fallos lógicos externos, demostrando habilidades a nivel de Diseño Avanzado.
+
+\end{document}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Carrito - Steam BDA{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>🛍️ Tu Carrito de Compras</h2>
+</div>
+
+<div class="layout-split">
+    <div class="glass-panel">
+        <div class="glass-panel-header">
+            <h5>Artículos</h5>
+        </div>
+        <table class="table-custom">
+            <thead>
+                <tr>
+                    <th>Juego</th>
+                    <th style="text-align:right;">Precio</th>
+                    <th style="text-align:center; width: 80px;">Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if items %}
+                    {% for item in items %}
+                    <tr>
+                        <td style="font-weight:600;">{{ item[2] }}</td>
+                        <td style="text-align:right; font-weight:700; color:var(--accent-emerald);">${{ "%.2f"|format(item[3]) }}</td>
+                        <td style="text-align:center;">
+                            <form action="{{ url_for('cart.quitar', id_juego=item[1]) }}" method="POST" style="margin:0;">
+                                <button type="submit" class="btn-danger-cool" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" title="Quitar del carrito">❌</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="3">
+                            <div class="empty-state">
+                                <div class="empty-icon">🛒</div>
+                                <p>Tu carrito está vacío.</p>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="summary-card">
+        <div class="summary-title">Resumen</div>
+        <div class="summary-total">
+            <span class="label">Total a pagar:</span>
+            <span class="value">${{ "%.2f"|format(total) }}</span>
+        </div>
+        {% if items %}
+        <form action="/carrito/pagar" method="POST">
+            <button type="submit" class="btn-glow" style="width:100%; font-size:1.1rem; padding:0.9rem;" id="pay-now">Pagar Ahora</button>
+        </form>
+        {% else %}
+        <a href="/catalogo" class="btn-outline-cool" style="display:block; text-align:center; text-decoration:none;">Ir al Catálogo</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

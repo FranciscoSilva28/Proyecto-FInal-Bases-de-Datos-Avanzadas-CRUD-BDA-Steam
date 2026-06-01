@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  oracledb:
+    image: gvenzl/oracle-free:latest
+    container_name: oracle-db-bda
+    environment:
+      - ORACLE_PASSWORD=AdminP123
+      - APP_USER=proyecto_bda
+      - APP_USER_PASSWORD=AdminP123
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+
+volumes:
+  oracle-data:
