@@ -330,6 +330,81 @@ JOIN usuario u ON v.id_empresa = u.id_usuario
 WHERE v.estado = 'AP';
 \end{lstlisting}
 
+\section{Manejo de Archivos Pesados (BLOBs y Multimedia)}
+Para el soporte de archivos pesados de multimedia (carátulas de juegos y tráilers de video en formato MP4), la arquitectura implementa dos modalidades de almacenamiento configurables por la empresa al momento de subir o editar su juego.
+
+\subsection{Carga de Imágenes y Videos (Upload en Modo BLOB)}
+Cuando se selecciona la modalidad de almacenamiento binario puro en la base de datos (BLOB), Flask recibe los archivos binarios del cliente en memoria y los inyecta en el motor de Oracle mediante variables seguras (\textit{Bind Variables}) para evitar fragmentaciones.
+
+\begin{lstlisting}[caption=games\_controller.py (Carga de BLOBs)]
+# Extraemos los bytes directamente del formulario multipart
+portada_file = request.files.get('portada')
+trailer_file = request.files.get('trailer')
+portada_blob = portada_file.read() if portada_file else None
+trailer_blob = trailer_file.read() if trailer_file else None
+
+# Insercion usando Bind Variables (:portada, :trailer)
+sql = """INSERT INTO videojuego (id_empresa, titulo, portada, trailer, modo_almacenamiento) 
+         VALUES (:empresa, :titulo, :portada, :trailer, 'BLOB')"""
+\end{lstlisting}
+
+\subsection{Visualización y Transmisión (Streaming)}
+Dado que el video se almacena directamente en formato binario dentro de Oracle, no es posible apuntar a una ruta estática en disco. El middleware en Flask intercepta las peticiones de los reproductores multimedia, lee el segmento binario del registro del juego y lo transmite como un flujo binario en tiempo real con soporte para cabeceras de rango (\textit{Range Requests}) y tipo MIME.
+
+\begin{lstlisting}[caption=games\_controller.py (Servicio de BLOB y Streaming)]
+@games_bp.route('/trailer-juego/<int:id_juego>')
+def trailer_juego(id_juego):
+    cursor.execute("SELECT trailer FROM videojuego WHERE id_juego = :1", [id_juego])
+    row = cursor.fetchone()
+    if row and row[0]:
+        blob_data = row[0].read()
+        return Response(blob_data, mimetype='video/mp4')
+\end{lstlisting}
+
+\subsection{Modalidad Híbrida: Archivos en Disco (Modo RUTA)}
+Cuando una empresa prefiere optimizar el espacio de almacenamiento del motor de base de datos, puede configurar el juego en modo \texttt{RUTA}. En esta modalidad, Flask se encarga de guardar físicamente los archivos en el servidor bajo la estructura \texttt{static/uploads/portadas/} y \texttt{static/uploads/trailers/}, mientras que la base de datos solo almacena las cadenas con las rutas relativas en las columnas \texttt{portada\_ruta} y \texttt{trailer\_ruta}. El controlador decide dinámicamente cómo despachar la información dependiendo del valor de la columna \texttt{modo\_almacenamiento}.
+
+\begin{lstlisting}[caption=games\_controller.py (Almacenamiento en Disco)]
+# Guardado fisico en el servidor de Flask
+filename = f"{id_juego}_{uuid.uuid4().hex[:8]}.mp4"
+ruta = os.path.join('static', 'uploads', 'trailers', filename)
+trailer_file.save(ruta)
+
+# Solo se guarda la cadena de la ruta en la base de datos
+cursor.execute("UPDATE videojuego SET trailer_ruta = :1 WHERE id_juego = :2", [ruta, id_juego])
+\end{lstlisting}
+
+\section{Comandos SQL*Plus y Diccionario de Datos para Auditoría}
+Para poder verificar la integridad de la arquitectura física y los objetos construidos en Oracle Database desde la consola, el administrador puede utilizar comandos específicos dirigidos al Diccionario de Datos.
+
+\subsection{Ingreso al Sistema como Administrador}
+Para conectarse directamente a la base de datos con los privilegios de administrador de base de datos (DBA) y evaluar el esquema, se ejecuta:
+\begin{lstlisting}[language=bash]
+# Ingresar a Oracle como Administrador Supremo (SYSDBA)
+sqlplus sys/AdminP123@FREEPDB1 as sysdba
+\end{lstlisting}
+
+\subsection{Consultas Administrativas al Diccionario de Datos}
+Las siguientes consultas permiten auditar el estado físico de los segmentos de almacenamiento, tablespaces, disparadores y objetos de la base de datos:
+
+\begin{lstlisting}[caption=Consultas de Auditoria de DBA]
+-- 1. Listar las tablas creadas, su tablespace fisico y su PCTFREE
+SELECT table_name, tablespace_name, pct_free 
+FROM dba_tables 
+WHERE owner = 'PROYECTO_BDA' 
+ORDER BY table_name;
+
+-- 2. Validar el estado y evento de los disparadores activos en el esquema
+SELECT trigger_name, trigger_type, table_name, status 
+FROM dba_triggers 
+WHERE table_owner = 'PROYECTO_BDA';
+
+-- 3. Auditar los segmentos de almacenamiento asignados a datos LOB (BLOB)
+SELECT table_name, column_name, segment_name, tablespace_name 
+FROM dba_lobs 
+WHERE owner = 'PROYECTO_BDA' AND table_name = 'VIDEOJUEGO';
+\end{lstlisting}
+
 \section{Conclusión}
 La arquitectura tecnológica de "Steam BDA" evidencia la madurez de \textbf{Oracle Database} como pilar para ecosistemas de gran escala. Mientras muchas plataformas modernas delegan ingenuamente reglas críticas a lenguajes interpretados en backend, este proyecto blinda sus reglas de negocio de manera monolítica usando la \textbf{Integridad Referencial y Transaccional} a nivel de Hardware y Datos. Al implementar Particionamiento Físico, Triggers Bloqueantes, Transacciones ACID y Vistas Analíticas, el E-Commerce entrega un rendimiento sumamente robusto y tolerante a fallos lógicos externos, demostrando habilidades a nivel de Diseño Avanzado.
 
